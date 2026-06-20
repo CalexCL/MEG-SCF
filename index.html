@@ -163,6 +163,13 @@
     position:absolute;bottom:14px;left:40px;right:40px;
     display:flex;justify-content:space-between;font-size:10px;color:var(--muted);
   }
+  .office-lock-overlay{
+    position:absolute;inset:0;background:rgba(245,247,250,.88);
+    display:flex;align-items:center;justify-content:center;
+    font-size:13px;font-weight:700;color:var(--navy);border-radius:6px;
+    text-align:center;padding:10px;
+  }
+  .bank-section{margin-bottom:14px;}
 
   /* ---------- Modal ---------- */
   .modal-overlay{
@@ -202,12 +209,14 @@
   <span class="tag">SCF Digital Form</span>
   <div class="spacer"></div>
   <button onclick="saveDraftLocal()">💾 Save Draft</button>
-  <button onclick="document.getElementById('loadFileInput').click()">📂 Load Draft</button>
+  <button id="btnLoadDraft" onclick="document.getElementById('loadFileInput').click()" style="display:none">📂 Load Draft</button>
   <input type="file" id="loadFileInput" accept=".json" style="display:none" onchange="loadDraftLocal(event)">
   <button onclick="driveSave()">⬆️ Save to Drive</button>
-  <button onclick="driveOpenPicker()">⬇️ Load from Drive</button>
-  <button onclick="syncSharedLists()">🔄 Sync Lists</button>
+  <button id="btnLoadDrive" onclick="driveOpenPicker()" style="display:none">⬇️ Load from Drive</button>
+  <button id="btnSyncLists" onclick="syncSharedLists()" style="display:none">🔄 Sync Lists</button>
   <button onclick="doPrint()">🖨️ Print / Save PDF</button>
+  <button id="btnAdmin" onclick="toggleAdmin()">🔑 Admin</button>
+  <span class="tag" id="adminIndicator" style="display:none;background:#2e8b57;border-radius:5px;padding:5px 10px;">Admin Mode Active</span>
 </div>
 
 <!-- ============ EDIT VIEW ============ -->
@@ -249,8 +258,8 @@
       <input type="text" id="periodYear" maxlength="4" style="width:55px" placeholder="YYYY">
     </div>
     <div class="pay-method">
-      <label><input type="radio" name="payMethod" value="Cash" checked> Cash</label>
-      <label><input type="radio" name="payMethod" value="Online Transfer"> Online Transfer</label>
+      <label><input type="radio" name="payMethod" value="Cash"> Cash</label>
+      <label><input type="radio" name="payMethod" value="Online Transfer" checked> Online Transfer</label>
     </div>
   </div>
 
@@ -285,29 +294,54 @@
     <span id="totalDisplay">0.00</span>
   </div>
 
-  <div class="office-section">
+  <div class="bank-section">
+    <div class="office-grid" style="margin-bottom:4px;">
+      <div>
+        <label>Bank Name</label>
+        <input type="text" id="bankName" list="bankNameList" onblur="onBankFieldBlur()">
+        <datalist id="bankNameList">
+          <option value="Maybank"><option value="CIMB Bank"><option value="Public Bank">
+          <option value="RHB Bank"><option value="Hong Leong Bank"><option value="AmBank">
+          <option value="Bank Islam"><option value="Bank Rakyat"><option value="UOB Malaysia">
+        </datalist>
+      </div>
+      <div>
+        <label>Account Number</label>
+        <input type="text" id="bankAccountNo" inputmode="numeric" oninput="onBankAccountInput()" onfocus="onBankAccountFocus()" onblur="onBankFieldBlur()">
+      </div>
+      <div>
+        <label>Account Holder</label>
+        <input type="text" id="bankAccountHolder" readonly style="background:#f0f2f5;color:var(--muted);">
+      </div>
+    </div>
+  </div>
+
+  <div class="office-section" style="position:relative;">
     <div class="note">* For office use only</div>
     <div class="office-grid">
       <div>
         <label>Prepared By</label>
-        <input type="text" id="preparedBy" list="staffList" oninput="checkSameClaimant()">
+        <input type="text" id="preparedBy" list="staffList" oninput="checkSameClaimant()" disabled>
       </div>
       <div>
         <label>Checked By</label>
-        <input type="text" id="checkedBy" list="staffList" oninput="checkSameClaimant()">
+        <input type="text" id="checkedBy" list="staffList" oninput="checkSameClaimant()" disabled>
       </div>
       <div>
         <label>Date of Checking</label>
-        <input type="text" id="checkedDate">
+        <input type="text" id="checkedDate" disabled>
       </div>
     </div>
     <div class="warn-box" id="sameClaimantWarning">
       ⚠️ Claimant and Checker appear to be the same person. Please confirm this is correct, or select a different checker.
     </div>
+    <div class="office-lock-overlay" id="officeLockOverlay">
+      🔒 For Office Use Only — Admin Access Required
+    </div>
   </div>
 
   <div class="footer-stamp">
-    <span id="refStamp">Ref: SCF-v.2026.06.19-23:30</span>
+    <span id="refStamp">Ref: SCF-v.2026.06.19-16:45</span>
     <span>Page 1</span>
   </div>
 
@@ -335,8 +369,10 @@
 const GOOGLE_CLIENT_ID = "700599727545-av1po5d2hhad232phjufudqbkj79fo5e.apps.googleusercontent.com";
 const DRIVE_FOLDER_ID  = "1hYO-CpEkE7bo6Jne0u6XgL76rKfzKbDr";
 const DRIVE_SCOPE      = "https://www.googleapis.com/auth/drive";
-const VERSION_STAMP    = "SCF-v.2026.06.19-23:30";
+const VERSION_STAMP    = "SCF-v.2026.06.19-16:45";
 const SHARED_LISTS_FILENAME = "scf_shared_lists.json";
+const ADMIN_PASSWORD_HASH = "e753a01046cac4827512d6cfd4b1159411bdc13cce5a36ac7bc8b58526bcd4bb"; // sha256 of admin password, not stored in plain text
+let adminMode = false;
 
 const COMPANIES = {
   meg: { name: "MYEDEN GROUP SDN BHD",      code: "MEG", logo: "https://i.postimg.cc/Bb15Phb1/My-Eden-Group-Logo-icon-color.png" },
@@ -417,6 +453,8 @@ function init(){
   onCompanyChange();
   addRow(); addRow(); addRow();
   updateSerial();
+  applyAdminUI();
+  syncAccountHolderLabel();
 }
 
 function onCompanyChange(){
@@ -431,6 +469,63 @@ function onClaimedByChange(){
   document.getElementById('serialInitials').value = deriveInitials(document.getElementById('claimedBy').value);
   updateSerial();
   checkSameClaimant();
+  syncAccountHolderLabel();
+  autoFillBankFromDirectory();
+}
+
+/* ===================== BANK DIRECTORY ===================== */
+function getBankDirectory(){
+  try{ return JSON.parse(localStorage.getItem('scf_bankDirectory')) || {}; }catch(e){ return {}; }
+}
+function saveBankDirectoryDict(dict){ localStorage.setItem('scf_bankDirectory', JSON.stringify(dict)); }
+function maskAccountNo(num){
+  num = (num||"").toString();
+  if(num.length<=3) return "*".repeat(num.length);
+  return num.slice(0,-3) + "***";
+}
+function syncAccountHolderLabel(){
+  document.getElementById('bankAccountHolder').value = document.getElementById('claimedBy').value || "";
+}
+function autoFillBankFromDirectory(){
+  const name = (document.getElementById('claimedBy').value||"").trim();
+  const dict = getBankDirectory();
+  const rec = dict[name];
+  const acctInput = document.getElementById('bankAccountNo');
+  if(rec){
+    document.getElementById('bankName').value = rec.bankName || "";
+    acctInput.dataset.full = rec.accountNo || "";
+    renderBankAccountDisplay();
+  }
+}
+function onBankAccountFocus(){
+  // show full value while actively editing, regardless of mode
+  const input = document.getElementById('bankAccountNo');
+  input.value = input.dataset.full || input.value;
+}
+function onBankAccountInput(){
+  // user is actively typing the real number themselves
+  const input = document.getElementById('bankAccountNo');
+  input.dataset.full = input.value;
+}
+function renderBankAccountDisplay(){
+  const input = document.getElementById('bankAccountNo');
+  const full = input.dataset.full || "";
+  if(document.activeElement === input) return; // don't mask while user is actively typing/editing
+  input.value = adminMode ? full : maskAccountNo(full);
+}
+function onBankFieldBlur(){
+  const name = (document.getElementById('claimedBy').value||"").trim();
+  const bankName = document.getElementById('bankName').value.trim();
+  const acctInput = document.getElementById('bankAccountNo');
+  const fullAcct = (acctInput.dataset.full || acctInput.value || "").trim();
+  acctInput.dataset.full = fullAcct;
+  if(name && (bankName || fullAcct)){
+    const dict = getBankDirectory();
+    dict[name] = { bankName: bankName, accountNo: fullAcct };
+    saveBankDirectoryDict(dict);
+    if(accessToken) driveSaveLists();
+  }
+  renderBankAccountDisplay();
 }
 
 function updateSerial(){
@@ -445,6 +540,41 @@ function checkSameClaimant(){
   const a = (document.getElementById('claimedBy').value||"").trim().toLowerCase();
   const b = (document.getElementById('checkedBy').value||"").trim().toLowerCase();
   document.getElementById('sameClaimantWarning').style.display = (a && b && a===b) ? 'block' : 'none';
+}
+
+/* ===================== ADMIN MODE ===================== */
+async function sha256Hex(text){
+  const enc = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function toggleAdmin(){
+  if(adminMode){
+    adminMode = false;
+    applyAdminUI();
+    return;
+  }
+  const pw = prompt("Enter Admin password:");
+  if(pw===null) return;
+  const hash = await sha256Hex(pw);
+  if(hash === ADMIN_PASSWORD_HASH){
+    adminMode = true;
+    applyAdminUI();
+  } else {
+    alert("Incorrect password.");
+  }
+}
+function applyAdminUI(){
+  document.getElementById('adminIndicator').style.display = adminMode ? 'inline' : 'none';
+  document.getElementById('btnAdmin').textContent = adminMode ? '🔒 Lock' : '🔑 Admin';
+  document.getElementById('btnLoadDraft').style.display = adminMode ? 'inline-block' : 'none';
+  document.getElementById('btnLoadDrive').style.display = adminMode ? 'inline-block' : 'none';
+  document.getElementById('btnSyncLists').style.display = adminMode ? 'inline-block' : 'none';
+  ['preparedBy','checkedBy','checkedDate'].forEach(id=>{
+    document.getElementById(id).disabled = !adminMode;
+  });
+  document.getElementById('officeLockOverlay').style.display = adminMode ? 'none' : 'flex';
+  renderBankAccountDisplay();
 }
 
 /* ===================== ROWS ===================== */
@@ -513,6 +643,8 @@ function collectDraft(){
     payMethod: document.querySelector('input[name="payMethod"]:checked').value,
     claimedBy: document.getElementById('claimedBy').value,
     claimDate: document.getElementById('claimDate').value,
+    bankName: document.getElementById('bankName').value,
+    bankAccountNo: document.getElementById('bankAccountNo').dataset.full || "",
     rows: rows,
     total: recalcTotal(),
     preparedBy: document.getElementById('preparedBy').value,
@@ -532,6 +664,10 @@ function applyDraft(d){
   document.querySelectorAll('input[name="payMethod"]').forEach(r=>{ r.checked = (r.value===d.payMethod); });
   document.getElementById('claimedBy').value = d.claimedBy || '';
   document.getElementById('claimDate').value = d.claimDate || '';
+  document.getElementById('bankName').value = d.bankName || '';
+  document.getElementById('bankAccountNo').dataset.full = d.bankAccountNo || '';
+  syncAccountHolderLabel();
+  renderBankAccountDisplay();
   document.getElementById('preparedBy').value = d.preparedBy || '';
   document.getElementById('checkedBy').value = d.checkedBy || '';
   document.getElementById('checkedDate').value = d.checkedDate || '';
@@ -547,9 +683,9 @@ function applyDraft(d){
 /* ===================== SAVE / LOAD LOCAL ===================== */
 function smartFilename(){
   const d = collectDraft();
-  const name = (d.claimedBy||'Unknown').replace(/\s+/g,'_');
-  const dateForFile = (d.serial.yyyymm||'000000');
-  return `SCF_${d.company.toUpperCase()}_${name}_${dateForFile}.json`;
+  const code = COMPANIES[d.company].code;
+  const safeVersion = VERSION_STAMP.replace(/:/g,''); // strip colon - invalid in Windows filenames
+  return `${code}-${safeVersion}.json`;
 }
 function saveDraftLocal(){
   ['claimedBy','preparedBy','checkedBy'].forEach(id=>rememberValue('scf_staffList', document.getElementById(id).value));
@@ -586,7 +722,7 @@ function ensureTokenClient(cb){
         const firstSignInThisSession = !accessToken;
         accessToken = resp.access_token;
         if(firstSignInThisSession){
-          driveFetchLists(()=>{ refreshDatalists(); cb(); });
+          driveFetchLists(()=>{ refreshDatalists(); autoFillBankFromDirectory(); cb(); });
         } else {
           cb();
         }
@@ -623,6 +759,10 @@ function driveFetchLists(done){
       (data.suppliers||[]).forEach(n=>{ if(!sup.includes(n)) sup.push(n); });
       saveList('scf_staffList', staff);
       saveList('scf_supplierList', sup);
+      const localBank = getBankDirectory();
+      const remoteBank = data.bankDirectory || {};
+      Object.assign(localBank, remoteBank); // remote treated as shared source of truth on conflicts
+      saveBankDirectoryDict(localBank);
       if(done) done();
     }).catch(err=>{ console.error('Drive list fetch failed', err); if(done) done(); });
   }
@@ -631,7 +771,7 @@ function driveFetchLists(done){
 }
 
 function driveSaveLists(){
-  const payload = JSON.stringify({ staff: loadList('scf_staffList'), suppliers: loadList('scf_supplierList') });
+  const payload = JSON.stringify({ staff: loadList('scf_staffList'), suppliers: loadList('scf_supplierList'), bankDirectory: getBankDirectory() });
   function upload(){
     if(sharedListsFileId){
       fetch(`https://www.googleapis.com/upload/drive/v3/files/${sharedListsFileId}?uploadType=media&supportsAllDrives=true`, {
@@ -663,6 +803,7 @@ function syncSharedLists(){
   ensureTokenClient(()=>{
     driveFetchLists(()=>{
       refreshDatalists();
+      autoFillBankFromDirectory();
       alert('Staff and supplier lists synced from Drive.');
     });
   });
@@ -774,6 +915,11 @@ function buildPrintPages(){
         <div class="claimant-row">
           <div><b>Claimed by:</b> ${escapeHtml(d.claimedBy)}</div>
           <div><b>Date:</b> ${escapeHtml(d.claimDate)}</div>
+        </div>
+        <div class="claimant-row" style="margin-top:4px;">
+          <div><b>Bank:</b> ${escapeHtml(d.bankName)}</div>
+          <div><b>Account No:</b> ${escapeHtml(d.bankAccountNo)}</div>
+          <div><b>Account Holder:</b> ${escapeHtml(d.claimedBy)}</div>
         </div>`;
     } else {
       headerHtml = `
