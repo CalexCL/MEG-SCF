@@ -210,7 +210,23 @@
     cursor:pointer;font-size:13px;display:flex;justify-content:space-between;
   }
   .drive-file-item:hover{background:#f0f4fa;}
-  .modal-close{float:right;cursor:pointer;font-weight:700;color:var(--muted);}
+  .modal-close{cursor:pointer;font-weight:700;color:var(--muted);font-size:18px;line-height:1;}
+  .manage-tab-btn{
+    padding:6px 14px;border:1px solid var(--navy);border-radius:6px;background:#fff;
+    color:var(--navy);font-size:12px;font-weight:600;cursor:pointer;
+  }
+  .manage-tab-btn.active,.manage-tab-btn:hover{background:var(--navy);color:#fff;}
+  .manage-list-item{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:7px 10px;border-bottom:1px solid var(--line);font-size:13px;
+  }
+  .manage-list-item:last-child{border-bottom:none;}
+  .manage-delete-btn{
+    border:none;background:none;color:#c0392b;cursor:pointer;font-size:16px;
+    font-weight:700;padding:0 4px;line-height:1;flex:none;
+  }
+  .manage-delete-btn:hover{color:#96281b;}
+  .manage-empty{color:var(--muted);font-size:13px;padding:10px;}
 
   /* ---------- Print ---------- */
   #printArea{display:none;}
@@ -239,6 +255,7 @@
   <button onclick="driveSave()">⬆️ Save to Drive</button>
   <button id="btnLoadDrive" onclick="driveOpenPicker()" style="display:none">⬇️ Load from Drive</button>
   <button id="btnSyncLists" onclick="syncSharedLists()" style="display:none">🔄 Sync Lists</button>
+  <button id="btnManageLists" onclick="openManageModal()" style="display:none">📋 Manage Lists</button>
   <button onclick="doPrint()">🖨️ Print / Save PDF</button>
   <button id="btnAdmin" onclick="toggleAdmin()">🔑 Admin</button>
   <span class="tag" id="adminIndicator" style="display:none;background:#2e8b57;border-radius:5px;padding:5px 10px;">Admin Mode Active</span>
@@ -397,7 +414,7 @@
   </div>
 
   <div class="footer-stamp">
-    <span id="refStamp">Ref: SCF v.2026.06.30-17:15</span>
+    <span id="refStamp">Ref: SCF v.2026.06.30-18:15</span>
     <span>Page 1</span>
   </div>
 
@@ -417,12 +434,28 @@
   </div>
 </div>
 
+<!-- ============ MANAGE LISTS MODAL ============ -->
+<div class="modal-overlay" id="manageListsModal">
+  <div class="modal-box" style="width:520px;max-height:85vh;display:flex;flex-direction:column;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <h3 style="margin:0;color:var(--navy)">📋 Manage Lists</h3>
+      <span class="modal-close" onclick="closeManageModal()">✕</span>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;" id="manageTabBtns">
+      <button class="manage-tab-btn active" onclick="showManageTab('scf_staffList')">👤 Staff</button>
+      <button class="manage-tab-btn" onclick="showManageTab('scf_supplierList')">🏪 Suppliers</button>
+      <button class="manage-tab-btn" onclick="showManageTab('scf_bankNameList')">🏦 Banks</button>
+    </div>
+    <div id="manageListContent" style="overflow-y:auto;flex:1;"></div>
+  </div>
+</div>
+
 <script>
 /* ===================== CONFIG ===================== */
 const GOOGLE_CLIENT_ID = "700599727545-av1po5d2hhad232phjufudqbkj79fo5e.apps.googleusercontent.com";
 const DRIVE_FOLDER_ID  = "1hYO-CpEkE7bo6Jne0u6XgL76rKfzKbDr";
 const DRIVE_SCOPE      = "https://www.googleapis.com/auth/drive";
-const VERSION_STAMP    = "SCF v.2026.06.30-17:15";
+const VERSION_STAMP    = "SCF v.2026.06.30-18:15";
 const SHARED_LISTS_FILENAME = "scf_shared_lists.json";
 const ADMIN_PASSWORD_HASH = "e753a01046cac4827512d6cfd4b1159411bdc13cce5a36ac7bc8b58526bcd4bb"; // sha256 of admin password, not stored in plain text
 let adminMode = false;
@@ -460,6 +493,7 @@ function rememberValue(key, val){
   let list = loadList(key);
   if(!list.includes(val)){
     list.push(val);
+    list.sort((a,b)=>a.localeCompare(b,'en',{sensitivity:'base'}));
     saveList(key, list);
     refreshDatalists();
     if(accessToken) driveSaveLists(); // push to shared Drive list if already signed in this session
@@ -467,7 +501,7 @@ function rememberValue(key, val){
 }
 /* ===================== COMBO BOX ===================== */
 function buildComboOptions(key, selectedVal){
-  const list = loadList(key);
+  const list = loadList(key).slice().sort((a,b)=>a.localeCompare(b,'en',{sensitivity:'base'}));
   let opts = `<option value="">— Select —</option>`;
   list.forEach(n=>{
     const sel = n===(selectedVal||'') ? ' selected' : '';
@@ -710,6 +744,7 @@ function applyAdminUI(){
   document.getElementById('btnLoadDraft').style.display = adminMode ? 'inline-block' : 'none';
   document.getElementById('btnLoadDrive').style.display = adminMode ? 'inline-block' : 'none';
   document.getElementById('btnSyncLists').style.display = adminMode ? 'inline-block' : 'none';
+  document.getElementById('btnManageLists').style.display = adminMode ? 'inline-block' : 'none';
   ['preparedByCombo','checkedByCombo'].forEach(id=>{
     const wrap = document.getElementById(id);
     if(wrap) wrap.querySelector('.combo-select').disabled = !adminMode;
@@ -728,7 +763,7 @@ function addRow(data){
   tr.dataset.rid = rowCounter;
   tr.innerHTML = `
     <td class="no">${tbody.children.length+1}</td>
-    <td><input type="text" class="r-date" placeholder="DD-MM-YY" value="${data?escapeHtml(data.date):''}"></td>
+    <td><input type="text" class="r-date" placeholder="DD-MM-YYYY" value="${data?escapeHtml(data.date):''}" onblur="expandDateYear(this)"></td>
     <td>
       <div class="combo-wrap" data-list-key="scf_supplierList">
         <div class="combo-select-row">
@@ -1015,6 +1050,44 @@ function driveLoadFile(fileId){
     closeDriveModal();
   }).catch(err=>{ console.error(err); alert('Could not load that file: '+err.message); });
 }
+/* ===================== MANAGE LISTS ===================== */
+let currentManageKey = 'scf_staffList';
+function openManageModal(){
+  document.getElementById('manageListsModal').style.display = 'flex';
+  showManageTab('scf_staffList');
+}
+function closeManageModal(){ document.getElementById('manageListsModal').style.display = 'none'; }
+function showManageTab(key){
+  currentManageKey = key;
+  // update tab active state
+  const tabMap = {'scf_staffList':0,'scf_supplierList':1,'scf_bankNameList':2};
+  document.querySelectorAll('.manage-tab-btn').forEach((btn,i)=>{
+    btn.classList.toggle('active', i===tabMap[key]);
+  });
+  renderManageList(key);
+}
+function renderManageList(key){
+  const list = loadList(key).slice().sort((a,b)=>a.localeCompare(b,'en',{sensitivity:'base'}));
+  const cont = document.getElementById('manageListContent');
+  if(list.length===0){
+    cont.innerHTML = '<div class="manage-empty">No items in this list yet.</div>';
+    return;
+  }
+  cont.innerHTML = list.map(name=>`
+    <div class="manage-list-item">
+      <span>${escapeHtml(name)}</span>
+      <button class="manage-delete-btn" title="Delete" onclick="deleteListItem(${JSON.stringify(key)},${JSON.stringify(name)})">✕</button>
+    </div>`).join('');
+}
+function deleteListItem(key, val){
+  if(!confirm(`Delete "${val}" from this list? This cannot be undone.`)) return;
+  let list = loadList(key).filter(n=>n!==val);
+  saveList(key, list);
+  refreshAllCombos(key);
+  if(accessToken) driveSaveLists();
+  renderManageList(key);
+}
+
 function closeDriveModal(){ document.getElementById('driveModal').style.display = 'none'; }
 
 /* ===================== PRINT / PAGINATION ===================== */
@@ -1126,11 +1199,24 @@ function buildPrintPages(){
   });
 }
 
+function expandDateYear(input){
+  let v = (input.value||'').trim();
+  if(!v) return;
+  v = v.replace(/\//g,'-'); // normalise slash separators
+  const parts = v.split('-');
+  if(parts.length===3){
+    let [dd,mm,yy] = parts;
+    if(yy.length===2) yy = '20'+yy;
+    input.value = `${dd.padStart(2,'0')}-${mm.padStart(2,'0')}-${yy}`;
+  }
+}
 function doPrint(){
+  const pdfName = buildFilenameBase() || 'Staff_Claim_Form';
+  document.title = pdfName;
   buildPrintPages();
-  const prevTitle = document.title;
-  document.title = buildFilenameBase();
-  setTimeout(()=>{ window.print(); document.title = prevTitle; }, 50);
+  window.onbeforeprint = ()=>{ document.title = pdfName; };
+  window.onafterprint  = ()=>{ document.title = 'Staff Misc Claim Form (SCF)'; };
+  setTimeout(()=>window.print(), 150);
 }
 
 /* ===================== BOOT ===================== */
