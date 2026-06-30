@@ -332,12 +332,16 @@
     <div class="office-grid" style="margin-bottom:4px;">
       <div>
         <label>Bank Name</label>
-        <input type="text" id="bankName" list="bankNameList" onblur="onBankFieldBlur()">
-        <datalist id="bankNameList">
-          <option value="Maybank"><option value="CIMB Bank"><option value="Public Bank">
-          <option value="RHB Bank"><option value="Hong Leong Bank"><option value="AmBank">
-          <option value="Bank Islam"><option value="Bank Rakyat"><option value="UOB Malaysia">
-        </datalist>
+        <div class="combo-wrap combo-standalone" id="bankNameCombo" data-list-key="scf_bankNameList">
+          <div class="combo-select-row">
+            <select class="combo-select" onchange="onComboSelectChange(this)"></select>
+          </div>
+          <div class="combo-add-row">
+            <input type="text" class="combo-input" placeholder="New bank name...">
+            <button class="combo-confirm-btn" onclick="confirmComboAdd(this)">✓</button>
+            <button class="combo-cancel-btn" onclick="cancelComboAdd(this)">✗</button>
+          </div>
+        </div>
       </div>
       <div>
         <label>Account Number</label>
@@ -393,7 +397,7 @@
   </div>
 
   <div class="footer-stamp">
-    <span id="refStamp">Ref: SCF v.2026.06.30-10:00</span>
+    <span id="refStamp">Ref: SCF v.2026.06.30-17:15</span>
     <span>Page 1</span>
   </div>
 
@@ -418,10 +422,24 @@
 const GOOGLE_CLIENT_ID = "700599727545-av1po5d2hhad232phjufudqbkj79fo5e.apps.googleusercontent.com";
 const DRIVE_FOLDER_ID  = "1hYO-CpEkE7bo6Jne0u6XgL76rKfzKbDr";
 const DRIVE_SCOPE      = "https://www.googleapis.com/auth/drive";
-const VERSION_STAMP    = "SCF v.2026.06.30-10:00";
+const VERSION_STAMP    = "SCF v.2026.06.30-17:15";
 const SHARED_LISTS_FILENAME = "scf_shared_lists.json";
 const ADMIN_PASSWORD_HASH = "e753a01046cac4827512d6cfd4b1159411bdc13cce5a36ac7bc8b58526bcd4bb"; // sha256 of admin password, not stored in plain text
 let adminMode = false;
+const DEFAULT_BANKS = ["Affin Bank Berhad", "Alliance Bank Malaysia Berhad", "AmBank (M) Berhad", "BNP Paribas Malaysia Berhad", "Bangkok Bank Berhad", "Bank of America Malaysia Berhad", "Bank of China (Malaysia) Berhad", "Bank of Tokyo-Mitsubishi UFJ (Malaysia) Berhad", "CIMB Bank Berhad", "Citibank Berhad", "Deutsche Bank (Malaysia) Berhad", "HSBC Bank Malaysia Berhad", "Hong Leong Bank Berhad", "India International Bank (Malaysia) Berhad", "Industrial and Commercial Bank of China (Malaysia) Berhad", "J.P. Morgan Chase Bank Berhad", "Malayan Banking Berhad", "Mizuho Bank (Malaysia) Berhad", "National Bank of Abu Dhabi Malaysia Berhad", "OCBC Bank (Malaysia) Berhad", "Public Bank Berhad", "RHB Bank Berhad", "Standard Chartered Bank Malaysia Berhad", "Sumitomo Mitsui Banking Corporation Malaysia Berhad", "The Bank of Nova Scotia Berhad", "The Royal Bank of Scotland Berhad", "United Overseas Bank (Malaysia) Bhd.", "Affin Islamic Bank Berhad", "Al Rajhi Banking & Investment Corporation (Malaysia) Berhad", "Alliance Islamic Bank Berhad", "AmBank Islamic Berhad", "Asian Finance Bank Berhad", "Bank Islam Malaysia Berhad", "Bank Muamalat Malaysia Berhad", "CIMB Islamic Bank Berhad", "HSBC Amanah Malaysia Berhad", "Hong Leong Islamic Bank Berhad", "Kuwait Finance House (Malaysia) Berhad", "Maybank Islamic Berhad", "OCBC Al-Amin Bank Berhad", "Public Islamic Bank Berhad", "RHB Islamic Bank Berhad", "Standard Chartered Saadiq Berhad", "Affin Hwang Investment Bank Berhad", "Alliance Investment Bank Berhad", "AmInvestment Bank Berhad", "CIMB Investment Bank Berhad", "Hong Leong Investment Bank Berhad", "KAF Investment Bank Berhad", "Kenanga Investment Bank Berhad", "MIMB Investment Bank Berhad", "Maybank Investment Bank Berhad", "Public Investment Bank Berhad", "RHB Investment Bank Berhad", "Al Rajhi Banking & Investment Corporation", "Deutsche Bank Aktiengesellschaft", "PT Bank Muamalat Indonesia, Tbk"];
+function seedBankNames(){
+  if(loadList('scf_bankNameList').length===0) saveList('scf_bankNameList', DEFAULT_BANKS);
+}
+function buildFilenameBase(){
+  const claimedBy = (getComboVal(document.getElementById('claimedByCombo'))||'Unknown').trim();
+  const serial    = (document.getElementById('serialDisplay').textContent||'').trim();
+  const from      = (document.getElementById('periodFrom').value||'').slice(0,3);
+  const to        = (document.getElementById('periodTo').value||'').slice(0,3);
+  const year      = (document.getElementById('periodYear').value||'').trim();
+  const period    = (from && to && from!==to) ? `${from}-${to}` : from;
+  const parts     = [claimedBy, serial, period, year].filter(Boolean);
+  return parts.join(' ');
+}
 
 const COMPANIES = {
   meg: { name: "MYEDEN GROUP SDN BHD",      code: "MEG", logo: "https://i.postimg.cc/Bb15Phb1/My-Eden-Group-Logo-icon-color.png" },
@@ -473,6 +491,7 @@ function refreshAllCombos(key){
 function refreshDatalists(){
   refreshAllCombos('scf_staffList');
   refreshAllCombos('scf_supplierList');
+  refreshAllCombos('scf_bankNameList');
 }
 function getComboVal(wrap){
   if(!wrap) return '';
@@ -569,6 +588,7 @@ function init(){
   document.getElementById('checkedDate').value = n.ddmmyyyyhm.split(' ')[0];
   document.getElementById('refStamp').textContent = `Ref: ${VERSION_STAMP}`;
   onCompanyChange();
+  seedBankNames();     // seed default banks if first run
   refreshDatalists(); // populate all combos from localStorage on load
   addRow(); addRow(); addRow();
   updateSerial();
@@ -612,7 +632,7 @@ function autoFillBankFromDirectory(){
   const rec = dict[name];
   const acctInput = document.getElementById('bankAccountNo');
   if(rec){
-    document.getElementById('bankName').value = rec.bankName || "";
+    setComboVal(document.getElementById('bankNameCombo'), rec.bankName || '');
     acctInput.dataset.full = rec.accountNo || "";
     renderBankAccountDisplay();
   }
@@ -635,7 +655,7 @@ function renderBankAccountDisplay(){
 }
 function onBankFieldBlur(){
   const name = getComboVal(document.getElementById('claimedByCombo')).trim();
-  const bankName = document.getElementById('bankName').value.trim();
+  const bankName = getComboVal(document.getElementById('bankNameCombo')).trim();
   const acctInput = document.getElementById('bankAccountNo');
   const fullAcct = (acctInput.dataset.full || acctInput.value || "").trim();
   acctInput.dataset.full = fullAcct;
@@ -776,7 +796,7 @@ function collectDraft(){
     payMethod: document.querySelector('input[name="payMethod"]:checked').value,
     claimedBy: getComboVal(document.getElementById('claimedByCombo')),
     claimDate: document.getElementById('claimDate').value,
-    bankName: document.getElementById('bankName').value,
+    bankName: getComboVal(document.getElementById('bankNameCombo')),
     bankAccountNo: document.getElementById('bankAccountNo').dataset.full || "",
     rows: rows,
     total: recalcTotal(),
@@ -797,7 +817,7 @@ function applyDraft(d){
   document.querySelectorAll('input[name="payMethod"]').forEach(r=>{ r.checked = (r.value===d.payMethod); });
   setComboVal(document.getElementById('claimedByCombo'), d.claimedBy || '');
   document.getElementById('claimDate').value = d.claimDate || '';
-  document.getElementById('bankName').value = d.bankName || '';
+  setComboVal(document.getElementById('bankNameCombo'), d.bankName || '');
   document.getElementById('bankAccountNo').dataset.full = d.bankAccountNo || '';
   syncAccountHolderLabel();
   renderBankAccountDisplay();
@@ -815,10 +835,7 @@ function applyDraft(d){
 
 /* ===================== SAVE / LOAD LOCAL ===================== */
 function smartFilename(){
-  const d = collectDraft();
-  const code = COMPANIES[d.company].code;
-  const safeVersion = VERSION_STAMP.replace(/:/g,''); // strip colon - invalid in Windows filenames
-  return `${code}-${safeVersion}.json`;
+  return buildFilenameBase() + '.json';
 }
 function saveDraftLocal(){
   ['claimedByCombo','preparedByCombo','checkedByCombo'].forEach(id=>rememberValue('scf_staffList', getComboVal(document.getElementById(id))));
@@ -892,9 +909,13 @@ function driveFetchLists(done){
       (data.suppliers||[]).forEach(n=>{ if(!sup.includes(n)) sup.push(n); });
       saveList('scf_staffList', staff);
       saveList('scf_supplierList', sup);
+      const remoteNames = data.bankNames || [];
+      const localNames = loadList('scf_bankNameList');
+      remoteNames.forEach(n=>{ if(!localNames.includes(n)) localNames.push(n); });
+      saveList('scf_bankNameList', localNames);
       const localBank = getBankDirectory();
       const remoteBank = data.bankDirectory || {};
-      Object.assign(localBank, remoteBank); // remote treated as shared source of truth on conflicts
+      Object.assign(localBank, remoteBank);
       saveBankDirectoryDict(localBank);
       if(done) done();
     }).catch(err=>{ console.error('Drive list fetch failed', err); if(done) done(); });
@@ -904,7 +925,7 @@ function driveFetchLists(done){
 }
 
 function driveSaveLists(){
-  const payload = JSON.stringify({ staff: loadList('scf_staffList'), suppliers: loadList('scf_supplierList'), bankDirectory: getBankDirectory() });
+  const payload = JSON.stringify({ staff: loadList('scf_staffList'), suppliers: loadList('scf_supplierList'), bankNames: loadList('scf_bankNameList'), bankDirectory: getBankDirectory() });
   function upload(){
     if(sharedListsFileId){
       fetch(`https://www.googleapis.com/upload/drive/v3/files/${sharedListsFileId}?uploadType=media&supportsAllDrives=true`, {
@@ -1107,7 +1128,9 @@ function buildPrintPages(){
 
 function doPrint(){
   buildPrintPages();
-  setTimeout(()=>window.print(), 50);
+  const prevTitle = document.title;
+  document.title = buildFilenameBase();
+  setTimeout(()=>{ window.print(); document.title = prevTitle; }, 50);
 }
 
 /* ===================== BOOT ===================== */
