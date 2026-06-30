@@ -170,6 +170,31 @@
     text-align:center;padding:10px;
   }
   .bank-section{margin-bottom:14px;}
+  /* ---- Combo Box (Option B: Select + Add New) ---- */
+  .combo-wrap{display:flex;flex-direction:column;width:100%;}
+  .combo-select-row{display:flex;width:100%;}
+  .combo-select{
+    flex:1;font-size:12.5px;padding:3px 4px;border:1px solid var(--line);
+    border-radius:4px;background:#fff;color:var(--ink);
+    width:100%;
+  }
+  .combo-select:disabled{background:#f0f2f5;color:var(--muted);}
+  .combo-add-row{
+    display:none;gap:4px;align-items:center;width:100%;
+  }
+  .combo-input{
+    flex:1;font-size:12.5px;padding:3px 5px;border:1px solid var(--navy);
+    border-radius:4px;min-width:0;
+  }
+  .combo-confirm-btn,.combo-cancel-btn{
+    border:none;border-radius:4px;padding:2px 7px;cursor:pointer;font-weight:700;font-size:13px;flex:none;
+  }
+  .combo-confirm-btn{background:#2e8b57;color:#fff;}
+  .combo-cancel-btn{background:#c0392b;color:#fff;}
+  /* standalone combo (not in table) */
+  .combo-standalone .combo-select{font-size:13px;padding:5px 6px;}
+  .combo-standalone .combo-input{font-size:13px;padding:5px 6px;}
+
 
   /* ---------- Modal ---------- */
   .modal-overlay{
@@ -266,7 +291,16 @@
   <div class="claimant-row">
     <div>
       <span>Claimed by:</span>
-      <input type="text" name="claimedBy" id="claimedBy" list="staffList" placeholder="Name" oninput="onClaimedByChange()">
+      <div class="combo-wrap combo-standalone" id="claimedByCombo" data-list-key="scf_staffList" data-onchange="onClaimedByChange">
+        <div class="combo-select-row">
+          <select class="combo-select" onchange="onComboSelectChange(this)"></select>
+        </div>
+        <div class="combo-add-row">
+          <input type="text" class="combo-input" placeholder="New claimant name...">
+          <button class="combo-confirm-btn" onclick="confirmComboAdd(this)">✓</button>
+          <button class="combo-cancel-btn" onclick="cancelComboAdd(this)">✗</button>
+        </div>
+      </div>
     </div>
     <div>
       <span>Date:</span>
@@ -321,11 +355,29 @@
     <div class="office-grid">
       <div>
         <label>Prepared By</label>
-        <input type="text" id="preparedBy" list="staffList" oninput="checkSameClaimant()" disabled>
+        <div class="combo-wrap combo-standalone" id="preparedByCombo" data-list-key="scf_staffList" data-onchange="checkSameClaimant">
+          <div class="combo-select-row">
+            <select class="combo-select" onchange="onComboSelectChange(this)" disabled></select>
+          </div>
+          <div class="combo-add-row">
+            <input type="text" class="combo-input" placeholder="New name...">
+            <button class="combo-confirm-btn" onclick="confirmComboAdd(this)">✓</button>
+            <button class="combo-cancel-btn" onclick="cancelComboAdd(this)">✗</button>
+          </div>
+        </div>
       </div>
       <div>
         <label>Checked By</label>
-        <input type="text" id="checkedBy" list="staffList" oninput="checkSameClaimant()" disabled>
+        <div class="combo-wrap combo-standalone" id="checkedByCombo" data-list-key="scf_staffList" data-onchange="checkSameClaimant">
+          <div class="combo-select-row">
+            <select class="combo-select" onchange="onComboSelectChange(this)" disabled></select>
+          </div>
+          <div class="combo-add-row">
+            <input type="text" class="combo-input" placeholder="New name...">
+            <button class="combo-confirm-btn" onclick="confirmComboAdd(this)">✓</button>
+            <button class="combo-cancel-btn" onclick="cancelComboAdd(this)">✗</button>
+          </div>
+        </div>
       </div>
       <div>
         <label>Date of Checking</label>
@@ -341,7 +393,7 @@
   </div>
 
   <div class="footer-stamp">
-    <span id="refStamp">Ref: SCF-v.2026.06.19-16:45</span>
+    <span id="refStamp">Ref: SCF v.2026.06.30-10:00</span>
     <span>Page 1</span>
   </div>
 
@@ -351,9 +403,6 @@
 <!-- ============ PRINT VIEW (built dynamically) ============ -->
 <div id="printArea"></div>
 
-<!-- shared datalists -->
-<datalist id="staffList"></datalist>
-<datalist id="supplierList"></datalist>
 
 <!-- ============ DRIVE PICKER MODAL ============ -->
 <div class="modal-overlay" id="driveModal">
@@ -369,7 +418,7 @@
 const GOOGLE_CLIENT_ID = "700599727545-av1po5d2hhad232phjufudqbkj79fo5e.apps.googleusercontent.com";
 const DRIVE_FOLDER_ID  = "1hYO-CpEkE7bo6Jne0u6XgL76rKfzKbDr";
 const DRIVE_SCOPE      = "https://www.googleapis.com/auth/drive";
-const VERSION_STAMP    = "SCF-v.2026.06.19-16:45";
+const VERSION_STAMP    = "SCF v.2026.06.30-10:00";
 const SHARED_LISTS_FILENAME = "scf_shared_lists.json";
 const ADMIN_PASSWORD_HASH = "e753a01046cac4827512d6cfd4b1159411bdc13cce5a36ac7bc8b58526bcd4bb"; // sha256 of admin password, not stored in plain text
 let adminMode = false;
@@ -398,11 +447,80 @@ function rememberValue(key, val){
     if(accessToken) driveSaveLists(); // push to shared Drive list if already signed in this session
   }
 }
+/* ===================== COMBO BOX ===================== */
+function buildComboOptions(key, selectedVal){
+  const list = loadList(key);
+  let opts = `<option value="">— Select —</option>`;
+  list.forEach(n=>{
+    const sel = n===(selectedVal||'') ? ' selected' : '';
+    opts += `<option value="${escapeHtml(n)}"${sel}>${escapeHtml(n)}</option>`;
+  });
+  opts += `<option value="__add_new__">＋ Add New...</option>`;
+  return opts;
+}
+function populateCombo(wrap, selectedVal){
+  const key = wrap.dataset.listKey;
+  const sel = wrap.querySelector('.combo-select');
+  sel.innerHTML = buildComboOptions(key, selectedVal||'');
+}
+function refreshAllCombos(key){
+  document.querySelectorAll(`.combo-wrap[data-list-key="${key}"]`).forEach(wrap=>{
+    const sel = wrap.querySelector('.combo-select');
+    const cur = (sel.value === '__add_new__' || !sel.value) ? '' : sel.value;
+    populateCombo(wrap, cur);
+  });
+}
 function refreshDatalists(){
-  const staff = loadList('scf_staffList');
-  const sup   = loadList('scf_supplierList');
-  document.getElementById('staffList').innerHTML = staff.map(s=>`<option value="${escapeHtml(s)}">`).join('');
-  document.getElementById('supplierList').innerHTML = sup.map(s=>`<option value="${escapeHtml(s)}">`).join('');
+  refreshAllCombos('scf_staffList');
+  refreshAllCombos('scf_supplierList');
+}
+function getComboVal(wrap){
+  if(!wrap) return '';
+  const addRow = wrap.querySelector('.combo-add-row');
+  // add-row is considered open only when explicitly set to flex by JS (not CSS default)
+  if(addRow && addRow.style.display === 'flex'){
+    return (wrap.querySelector('.combo-input').value||'').trim();
+  }
+  const v = wrap.querySelector('.combo-select').value;
+  return (v === '__add_new__') ? '' : (v||'');
+}
+function setComboVal(wrap, val){
+  if(!val) return;
+  const key = wrap.dataset.listKey;
+  const list = loadList(key);
+  if(!list.includes(val)){ rememberValue(key, val); }
+  populateCombo(wrap, val);
+}
+function onComboSelectChange(sel){
+  const wrap = sel.closest('.combo-wrap');
+  if(sel.value === '__add_new__'){
+    wrap.querySelector('.combo-select-row').style.display = 'none';
+    wrap.querySelector('.combo-add-row').style.display = 'flex';
+    wrap.querySelector('.combo-input').value = '';
+    wrap.querySelector('.combo-input').focus();
+  } else {
+    const cbName = wrap.dataset.onchange;
+    if(cbName && window[cbName]) window[cbName]();
+  }
+}
+function confirmComboAdd(btn){
+  const wrap = btn.closest('.combo-wrap');
+  const val = (wrap.querySelector('.combo-input').value||'').trim();
+  if(!val){ cancelComboAdd(btn); return; }
+  const key = wrap.dataset.listKey;
+  rememberValue(key, val); // saves + calls refreshDatalists -> refreshAllCombos
+  populateCombo(wrap, val); // select the new value on this specific combo
+  wrap.querySelector('.combo-select-row').style.display = '';
+  wrap.querySelector('.combo-add-row').style.display = 'none';
+  const cbName = wrap.dataset.onchange;
+  if(cbName && window[cbName]) window[cbName]();
+}
+function cancelComboAdd(btn){
+  const wrap = btn.closest('.combo-wrap');
+  wrap.querySelector('.combo-add-row').style.display = 'none';
+  wrap.querySelector('.combo-select-row').style.display = '';
+  const sel = wrap.querySelector('.combo-select');
+  if(sel.options.length > 0) sel.selectedIndex = 0;
 }
 function escapeHtml(s){ return (s||"").replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -451,6 +569,7 @@ function init(){
   document.getElementById('checkedDate').value = n.ddmmyyyyhm.split(' ')[0];
   document.getElementById('refStamp').textContent = `Ref: ${VERSION_STAMP}`;
   onCompanyChange();
+  refreshDatalists(); // populate all combos from localStorage on load
   addRow(); addRow(); addRow();
   updateSerial();
   applyAdminUI();
@@ -466,7 +585,8 @@ function onCompanyChange(){
 }
 
 function onClaimedByChange(){
-  document.getElementById('serialInitials').value = deriveInitials(document.getElementById('claimedBy').value);
+  const name = getComboVal(document.getElementById('claimedByCombo'));
+  document.getElementById('serialInitials').value = deriveInitials(name);
   updateSerial();
   checkSameClaimant();
   syncAccountHolderLabel();
@@ -484,10 +604,10 @@ function maskAccountNo(num){
   return num.slice(0,-3) + "***";
 }
 function syncAccountHolderLabel(){
-  document.getElementById('bankAccountHolder').value = document.getElementById('claimedBy').value || "";
+  document.getElementById('bankAccountHolder').value = getComboVal(document.getElementById('claimedByCombo'));
 }
 function autoFillBankFromDirectory(){
-  const name = (document.getElementById('claimedBy').value||"").trim();
+  const name = getComboVal(document.getElementById('claimedByCombo')).trim();
   const dict = getBankDirectory();
   const rec = dict[name];
   const acctInput = document.getElementById('bankAccountNo');
@@ -514,7 +634,7 @@ function renderBankAccountDisplay(){
   input.value = adminMode ? full : maskAccountNo(full);
 }
 function onBankFieldBlur(){
-  const name = (document.getElementById('claimedBy').value||"").trim();
+  const name = getComboVal(document.getElementById('claimedByCombo')).trim();
   const bankName = document.getElementById('bankName').value.trim();
   const acctInput = document.getElementById('bankAccountNo');
   const fullAcct = (acctInput.dataset.full || acctInput.value || "").trim();
@@ -537,8 +657,8 @@ function updateSerial(){
 }
 
 function checkSameClaimant(){
-  const a = (document.getElementById('claimedBy').value||"").trim().toLowerCase();
-  const b = (document.getElementById('checkedBy').value||"").trim().toLowerCase();
+  const a = getComboVal(document.getElementById('claimedByCombo')).toLowerCase();
+  const b = getComboVal(document.getElementById('checkedByCombo')).toLowerCase();
   document.getElementById('sameClaimantWarning').style.display = (a && b && a===b) ? 'block' : 'none';
 }
 
@@ -570,9 +690,11 @@ function applyAdminUI(){
   document.getElementById('btnLoadDraft').style.display = adminMode ? 'inline-block' : 'none';
   document.getElementById('btnLoadDrive').style.display = adminMode ? 'inline-block' : 'none';
   document.getElementById('btnSyncLists').style.display = adminMode ? 'inline-block' : 'none';
-  ['preparedBy','checkedBy','checkedDate'].forEach(id=>{
-    document.getElementById(id).disabled = !adminMode;
+  ['preparedByCombo','checkedByCombo'].forEach(id=>{
+    const wrap = document.getElementById(id);
+    if(wrap) wrap.querySelector('.combo-select').disabled = !adminMode;
   });
+  document.getElementById('checkedDate').disabled = !adminMode;
   document.getElementById('officeLockOverlay').style.display = adminMode ? 'none' : 'flex';
   renderBankAccountDisplay();
 }
@@ -587,7 +709,18 @@ function addRow(data){
   tr.innerHTML = `
     <td class="no">${tbody.children.length+1}</td>
     <td><input type="text" class="r-date" placeholder="DD-MM-YY" value="${data?escapeHtml(data.date):''}"></td>
-    <td><input type="text" class="r-supplier" list="supplierList" value="${data?escapeHtml(data.supplier):''}" onblur="rememberValue('scf_supplierList', this.value)"></td>
+    <td>
+      <div class="combo-wrap" data-list-key="scf_supplierList">
+        <div class="combo-select-row">
+          <select class="combo-select r-supplier" onchange="onComboSelectChange(this)">${buildComboOptions('scf_supplierList', data?data.supplier:'')}</select>
+        </div>
+        <div class="combo-add-row">
+          <input type="text" class="combo-input" placeholder="New supplier...">
+          <button class="combo-confirm-btn" onclick="confirmComboAdd(this)">✓</button>
+          <button class="combo-cancel-btn" onclick="cancelComboAdd(this)">✗</button>
+        </div>
+      </div>
+    </td>
     <td><input type="text" class="r-item" value="${data?escapeHtml(data.item):''}"></td>
     <td class="amt"><input type="number" step="0.01" class="r-amount" value="${data?data.amount:''}" oninput="recalcTotal()"></td>
     <td class="rm"><button class="rm-btn" onclick="removeRow(this)">✕</button></td>
@@ -624,7 +757,7 @@ function collectDraft(){
   document.querySelectorAll('#rowsBody tr').forEach(tr=>{
     rows.push({
       date: tr.querySelector('.r-date').value,
-      supplier: tr.querySelector('.r-supplier').value,
+      supplier: getComboVal(tr.querySelector('.combo-wrap')),
       item: tr.querySelector('.r-item').value,
       amount: parseFloat(tr.querySelector('.r-amount').value)||0
     });
@@ -641,14 +774,14 @@ function collectDraft(){
     periodTo: document.getElementById('periodTo').value,
     periodYear: document.getElementById('periodYear').value,
     payMethod: document.querySelector('input[name="payMethod"]:checked').value,
-    claimedBy: document.getElementById('claimedBy').value,
+    claimedBy: getComboVal(document.getElementById('claimedByCombo')),
     claimDate: document.getElementById('claimDate').value,
     bankName: document.getElementById('bankName').value,
     bankAccountNo: document.getElementById('bankAccountNo').dataset.full || "",
     rows: rows,
     total: recalcTotal(),
-    preparedBy: document.getElementById('preparedBy').value,
-    checkedBy: document.getElementById('checkedBy').value,
+    preparedBy: getComboVal(document.getElementById('preparedByCombo')),
+    checkedBy: getComboVal(document.getElementById('checkedByCombo')),
     checkedDate: document.getElementById('checkedDate').value
   };
 }
@@ -662,14 +795,14 @@ function applyDraft(d){
   document.getElementById('periodTo').value = d.periodTo || '';
   document.getElementById('periodYear').value = d.periodYear || '';
   document.querySelectorAll('input[name="payMethod"]').forEach(r=>{ r.checked = (r.value===d.payMethod); });
-  document.getElementById('claimedBy').value = d.claimedBy || '';
+  setComboVal(document.getElementById('claimedByCombo'), d.claimedBy || '');
   document.getElementById('claimDate').value = d.claimDate || '';
   document.getElementById('bankName').value = d.bankName || '';
   document.getElementById('bankAccountNo').dataset.full = d.bankAccountNo || '';
   syncAccountHolderLabel();
   renderBankAccountDisplay();
-  document.getElementById('preparedBy').value = d.preparedBy || '';
-  document.getElementById('checkedBy').value = d.checkedBy || '';
+  setComboVal(document.getElementById('preparedByCombo'), d.preparedBy || '');
+  setComboVal(document.getElementById('checkedByCombo'), d.checkedBy || '');
   document.getElementById('checkedDate').value = d.checkedDate || '';
   document.getElementById('rowsBody').innerHTML = '';
   (d.rows||[]).forEach(r=>addRow(r));
@@ -677,7 +810,7 @@ function applyDraft(d){
   recalcTotal();
   updateSerial();
   checkSameClaimant();
-  ['claimedBy','preparedBy','checkedBy'].forEach(id=>rememberValue('scf_staffList', document.getElementById(id).value));
+  ['claimedByCombo','preparedByCombo','checkedByCombo'].forEach(id=>rememberValue('scf_staffList', getComboVal(document.getElementById(id))));
 }
 
 /* ===================== SAVE / LOAD LOCAL ===================== */
@@ -688,7 +821,7 @@ function smartFilename(){
   return `${code}-${safeVersion}.json`;
 }
 function saveDraftLocal(){
-  ['claimedBy','preparedBy','checkedBy'].forEach(id=>rememberValue('scf_staffList', document.getElementById(id).value));
+  ['claimedByCombo','preparedByCombo','checkedByCombo'].forEach(id=>rememberValue('scf_staffList', getComboVal(document.getElementById(id))));
   const data = JSON.stringify(collectDraft(), null, 2);
   const blob = new Blob([data], {type:'application/json'});
   const a = document.createElement('a');
@@ -811,7 +944,7 @@ function syncSharedLists(){
 
 function driveSave(){
   ensureTokenClient(()=>{
-    ['claimedBy','preparedBy','checkedBy'].forEach(id=>rememberValue('scf_staffList', document.getElementById(id).value));
+    ['claimedByCombo','preparedByCombo','checkedByCombo'].forEach(id=>rememberValue('scf_staffList', getComboVal(document.getElementById(id))));
     const draft = collectDraft();
     const filename = smartFilename();
     const metadata = { name: filename, parents: [DRIVE_FOLDER_ID] };
