@@ -235,24 +235,19 @@
     .toolbar, .modal-overlay, .add-row-btn, .rm-btn, .company-select-wrap{display:none !important;}
     #editArea{display:none !important;}
     #printArea{display:block !important;}
-    /* Fixed A4 height per page, flex column so table can fill remaining space */
     .print-page{
       width:100%;box-shadow:none;page-break-after:always;padding:10mm 14mm;
-      height:297mm;box-sizing:border-box;
-      display:flex;flex-direction:column;
     }
     .print-page:last-child{page-break-after:auto;}
-    /* Table wrapper grows to fill all space between header and footer */
-    .print-table-wrap{flex:1;min-height:0;display:flex;flex-direction:column;}
-    /* Table stretches to fill wrapper; rows share the extra height equally */
-    .print-table-wrap table.claim-table{
-      flex:1;width:100%;height:100%;
-      border-collapse:collapse;table-layout:fixed;
-    }
+    .print-table-wrap{width:100%;margin-bottom:6px;}
+    table.claim-table{width:100%;border-collapse:collapse;table-layout:fixed;}
     table.claim-table tr{break-inside:avoid;}
-    table.claim-table th{padding:5px 6px;font-size:12px;background:var(--navy);color:#fff;}
+    table.claim-table th{padding:5px 6px;font-size:12px;}
     table.claim-table td{padding:4px 6px;font-size:12px;border-bottom:1px solid #c7ccd4;vertical-align:middle;}
-    .footer-stamp{margin-top:auto;padding-top:6px;}
+    /* Empty padding rows: fixed height, bottom border only, no content */
+    table.claim-table tr.empty-row{height:22px;}
+    table.claim-table tr.empty-row td{padding:0;border-bottom:1px solid #e0e3e8;color:transparent;}
+    .footer-stamp{margin-top:8px;}
   }
 </style>
 </head>
@@ -1180,7 +1175,13 @@ function buildPrintPages(){
         <td class="amt">${r.amount.toFixed(2)}</td>
       </tr>`).join('');
 
-    let bfRow = idx>0 ? `<tr><td colspan="4" style="text-align:right;font-weight:700;">Total Brought Forward:</td><td class="amt" style="font-weight:700;">${broughtForward.toFixed(2)}</td></tr>` : '';
+    // Option B: pad with empty rows to fill page to capacity
+  const pageCapacity = (idx===0) ? ROWS_PER_PAGE_FIRST : ROWS_PER_PAGE_NEXT;
+  const emptyCount = Math.max(0, pageCapacity - pageRows.length);
+  let emptyRows = Array.from({length:emptyCount}, ()=>
+    `<tr class="empty-row"><td class="no"></td><td></td><td></td><td></td><td class="amt"></td></tr>`
+  ).join('');
+  let bfRow = idx>0 ? `<tr><td colspan="4" style="text-align:right;font-weight:700;">Total Brought Forward:</td><td class="amt" style="font-weight:700;">${broughtForward.toFixed(2)}</td></tr>` : '';
 
     let tfootHtml = isLast
       ? `<tr><td colspan="4" style="text-align:right;font-weight:700;border-top:2px solid var(--navy);">TOTAL:</td><td class="amt" style="font-weight:700;border-top:2px solid var(--navy);">RM ${runningTotal.toFixed(2)}</td></tr>`
@@ -1201,7 +1202,7 @@ function buildPrintPages(){
       <div class="print-table-wrap">
         <table class="claim-table">
           <thead><tr><th style="width:26px">No.</th><th style="width:78px">Date</th><th style="width:190px">Supplier</th><th style="width:110px">Item(s) / Bill / Inv No</th><th style="width:90px">Amount (RM)</th></tr></thead>
-          <tbody>${bfRow}${rowsHtml}${tfootHtml}</tbody>
+          <tbody>${bfRow}${rowsHtml}${emptyRows}${tfootHtml}</tbody>
         </table>
       </div>
       ${officeHtml}
