@@ -235,19 +235,24 @@
     .toolbar, .modal-overlay, .add-row-btn, .rm-btn, .company-select-wrap{display:none !important;}
     #editArea{display:none !important;}
     #printArea{display:block !important;}
+    /* Fixed A4 height per page, flex column so table can fill remaining space */
     .print-page{
-      width:100%;min-height:0;box-shadow:none;page-break-after:always;padding:8mm 12mm;
+      width:100%;box-shadow:none;page-break-after:always;padding:10mm 14mm;
+      height:297mm;box-sizing:border-box;
+      display:flex;flex-direction:column;
     }
     .print-page:last-child{page-break-after:auto;}
+    /* Table wrapper grows to fill all space between header and footer */
+    .print-table-wrap{flex:1;min-height:0;display:flex;flex-direction:column;}
+    /* Table stretches to fill wrapper; rows share the extra height equally */
+    .print-table-wrap table.claim-table{
+      flex:1;width:100%;height:100%;
+      border-collapse:collapse;table-layout:fixed;
+    }
     table.claim-table tr{break-inside:avoid;}
-    /* tighter rows to fit up to 20 entries per page */
-    table.claim-table td{padding:2px 5px;font-size:11.5px;}
-    table.claim-table th{padding:4px 5px;font-size:11.5px;}
-    .header{padding-bottom:8px;margin-bottom:10px;}
-    .meta-row{margin-bottom:8px;}
-    .claimant-row{margin-bottom:6px;}
-    .bank-section{margin-bottom:8px;}
-    .total-row{padding-top:5px;margin-bottom:12px;font-size:13px;}
+    table.claim-table th{padding:5px 6px;font-size:12px;background:var(--navy);color:#fff;}
+    table.claim-table td{padding:4px 6px;font-size:12px;border-bottom:1px solid #c7ccd4;vertical-align:middle;}
+    .footer-stamp{margin-top:auto;padding-top:6px;}
   }
 </style>
 </head>
@@ -474,10 +479,12 @@ function seedBankNames(){
 function buildFilenameBase(){
   const claimedBy = (getComboVal(document.getElementById('claimedByCombo'))||'').trim();
   const serial    = (document.getElementById('serialDisplay').textContent||'').trim();
-  if(claimedBy && serial) return `${claimedBy} ${serial}`;
-  if(serial) return serial;
-  if(claimedBy) return claimedBy;
-  return 'Staff_Claim_Form';
+  const from      = (document.getElementById('periodFrom').value||'').slice(0,3);
+  const to        = (document.getElementById('periodTo').value||'').slice(0,3);
+  const year      = (document.getElementById('periodYear').value||'').trim();
+  const period    = (from && to && from!==to) ? `${from}-${to}` : from;
+  const parts     = [claimedBy, serial, period, year].filter(Boolean);
+  return parts.length ? parts.join(' ') : 'Staff_Claim_Form';
 }
 
 const COMPANIES = {
@@ -1191,10 +1198,12 @@ function buildPrintPages(){
 
     div.innerHTML = `
       ${headerHtml}
-      <table class="claim-table">
-        <thead><tr><th style="width:26px">No.</th><th style="width:78px">Date</th><th style="width:190px">Supplier</th><th style="width:110px">Item(s) / Bill / Inv No</th><th style="width:90px">Amount (RM)</th></tr></thead>
-        <tbody>${bfRow}${rowsHtml}${tfootHtml}</tbody>
-      </table>
+      <div class="print-table-wrap">
+        <table class="claim-table">
+          <thead><tr><th style="width:26px">No.</th><th style="width:78px">Date</th><th style="width:190px">Supplier</th><th style="width:110px">Item(s) / Bill / Inv No</th><th style="width:90px">Amount (RM)</th></tr></thead>
+          <tbody>${bfRow}${rowsHtml}${tfootHtml}</tbody>
+        </table>
+      </div>
       ${officeHtml}
       <div class="footer-stamp" style="position:static;margin-top:14px;">
         <span>Ref: ${VERSION_STAMP}</span>
